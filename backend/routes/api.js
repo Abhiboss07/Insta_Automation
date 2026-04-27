@@ -150,4 +150,15 @@ router.post('/test/comment', async (req, res) => {
   }
 });
 
+// ── MANYCHAT INTEGRATION ──────────────────────────────────────────
+router.get('/manychat/status', async (req, res) => {
+  const manychat = require('../services/manychat');
+  try {
+    const info = await manychat.getPageInfo();
+    res.json({ connected: true, account: info.data?.name, isPro: info.data?.is_pro });
+  } catch (err) {
+    res.status(500).json({ connected: false, error: err.message });
+  }
+});
+
 module.exports = router;
