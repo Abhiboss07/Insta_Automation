@@ -326,6 +326,7 @@ function Triggers() {
             <select value={form.matchType} onChange={e => setForm(f => ({ ...f, matchType: e.target.value }))}>
               <option value="exact">Exact match (comment = keyword only)</option>
               <option value="contains">Contains (keyword anywhere in comment)</option>
+              <option value="any">Any message (catch-all default reply)</option>
             </select>
 
             <label>Trigger on</label>

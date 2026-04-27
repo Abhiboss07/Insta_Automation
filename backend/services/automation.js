@@ -194,6 +194,8 @@ function findMatchingTrigger(text, eventType) {
     if (!t.active) return false;
     if (t.triggerOn !== eventType && t.triggerOn !== 'both') return false;
 
+    if (t.matchType === 'any') return true;
+
     const keyword = t.keyword.toUpperCase();
     if (t.matchType === 'exact') return upperText === keyword;
     if (t.matchType === 'contains') return upperText.includes(keyword);
