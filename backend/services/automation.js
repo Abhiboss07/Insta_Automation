@@ -1,7 +1,56 @@
 const { v4: uuidv4 } = require('uuid');
-const meta = require('./meta');
 const manychat = require('./manychat');
 const store = require('../store');
+
+// Lazy-load Meta service only when keys are available
+function getMetaService() {
+  if (process.env.META_ACCESS_TOKEN && process.env.META_INSTAGRAM_ACCOUNT_ID) {
+    return require('./meta');
+  }
+  return null;
+}
+
+/**
+ * Send a DM using ManyChat (primary) with Meta as optional fallback.
+ * Returns { sent, provider, error }
+ */
+async function sendDMWithProviders(recipientIdOrUsername, messageText) {
+  const meta = getMetaService();
+  let sent = false;
+  let provider = null;
+  let error = null;
+
+  // ── PRIMARY: ManyChat ─────────────────────────────────────────
+  try {
+    const subscriber = await manychat.findSubscriber(recipientIdOrUsername);
+    if (subscriber && subscriber.data && subscriber.data.id) {
+      await manychat.sendMessage(subscriber.data.id, messageText);
+      sent = true;
+      provider = 'manychat';
+    } else {
+      throw new Error('Subscriber not found in ManyChat');
+    }
+  } catch (mcErr) {
+    console.warn(`[ManyChat] DM failed for ${recipientIdOrUsername}: ${mcErr.message}`);
+
+    // ── FALLBACK: Meta (only if configured) ───────────────────
+    if (meta) {
+      try {
+        await meta.sendDM(recipientIdOrUsername, messageText);
+        sent = true;
+        provider = 'meta';
+      } catch (metaErr) {
+        error = `ManyChat: ${mcErr.message} | Meta: ${metaErr.message}`;
+        console.error(`[Automation] Both providers failed for ${recipientIdOrUsername}: ${error}`);
+      }
+    } else {
+      error = `ManyChat: ${mcErr.message} | Meta: not configured`;
+      console.error(`[Automation] ManyChat failed, Meta not available: ${error}`);
+    }
+  }
+
+  return { sent, provider, error };
+}
 
 /**
  * Core function: given a comment event, find a matching trigger and send DM
@@ -42,27 +91,9 @@ async function handleCommentEvent(event) {
     return { matched: true, sent: false, error: 'Template not found' };
   }
 
-  // Try sending via Meta first, fall back to ManyChat
-  let sent = false;
-  let provider = null;
-  let error = null;
-
-  try {
-    await meta.sendDM(commenterId, template.message);
-    sent = true;
-    provider = 'meta';
-  } catch (metaErr) {
-    console.warn(`[Meta] DM failed for ${commenterUsername}: ${metaErr.message}. Trying ManyChat...`);
-    try {
-      const subscriber = await manychat.findSubscriber(commenterUsername);
-      await manychat.sendMessage(subscriber.data.id, template.message);
-      sent = true;
-      provider = 'manychat';
-    } catch (mcErr) {
-      error = `Meta: ${metaErr.message} | ManyChat: ${mcErr.message}`;
-      console.error(`[Automation] Both providers failed for ${commenterUsername}: ${error}`);
-    }
-  }
+  // Send DM — ManyChat primary, Meta fallback
+  // Use username for ManyChat lookup (it searches by IG username)
+  const { sent, provider, error } = await sendDMWithProviders(commenterUsername, template.message);
 
   // Update stats
   if (sent) {
@@ -93,7 +124,6 @@ async function handleCommentEvent(event) {
 
 /**
  * Handle incoming DM events — matches triggers and auto-replies
- * Now includes ManyChat fallback (previously missing)
  */
 async function handleDMEvent(event) {
   const { senderId, senderUsername, messageText } = event;
@@ -127,27 +157,8 @@ async function handleDMEvent(event) {
     return { matched: true, sent: false, error: 'Template not found' };
   }
 
-  let sent = false;
-  let provider = null;
-  let error = null;
-
-  // Try Meta first, then fall back to ManyChat
-  try {
-    await meta.sendDM(senderId, template.message);
-    sent = true;
-    provider = 'meta';
-  } catch (metaErr) {
-    console.warn(`[Meta] DM reply failed for ${senderUsername}: ${metaErr.message}. Trying ManyChat...`);
-    try {
-      const subscriber = await manychat.findSubscriber(senderUsername);
-      await manychat.sendMessage(subscriber.data.id, template.message);
-      sent = true;
-      provider = 'manychat';
-    } catch (mcErr) {
-      error = `Meta: ${metaErr.message} | ManyChat: ${mcErr.message}`;
-      console.error(`[Automation] Both providers failed for ${senderUsername}: ${error}`);
-    }
-  }
+  // Send DM — ManyChat primary, Meta fallback
+  const { sent, provider, error } = await sendDMWithProviders(senderUsername, template.message);
 
   if (sent) {
     store.stats.totalSent++;

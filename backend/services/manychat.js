@@ -16,9 +16,11 @@ const client = axios.create({
  * Uses findBySystemField with ig_username (not findByUserRef which expects a custom ref)
  */
 async function findSubscriber(instagramUsername) {
-  const res = await client.post('/fb/subscriber/findBySystemField', {
-    field_name: 'ig_username',
-    field_value: instagramUsername
+  const res = await client.get('/fb/subscriber/findBySystemField', {
+    params: {
+      system_field_name: 'ig_username',
+      system_field_value: instagramUsername
+    }
   });
   return res.data;
 }

@@ -4,7 +4,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const crypto = require('crypto');
 
 const webhookRouter = require('./routes/webhook');
 const apiRouter = require('./routes/api');
@@ -28,7 +27,7 @@ const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
 app.use('/api', limiter);
 
 // ── Body parser ───────────────────────────────────────────────────
-// Webhook needs raw body for X-Hub-Signature-256 verification
+// Webhook needs raw body for X-Hub-Signature-256 verification (if Meta is configured)
 app.use('/webhook', express.json({
   verify: (req, _res, buf) => {
     req.rawBody = buf;
@@ -59,6 +58,10 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
+// ── Detect provider mode ─────────────────────────────────────────
+const hasMetaKeys = !!(process.env.META_ACCESS_TOKEN && process.env.META_INSTAGRAM_ACCOUNT_ID);
+const hasManyChat = !!process.env.MANYCHAT_API_KEY;
+
 app.listen(PORT, () => {
   console.log(`
   ┌─────────────────────────────────────────┐
@@ -67,6 +70,10 @@ app.listen(PORT, () => {
   │                                         │
   │   Webhook URL: /webhook                 │
   │   API:         /api                     │
+  │                                         │
+  │   Provider Mode:                        │
+  │   ${hasManyChat ? '✅' : '❌'} ManyChat  ${hasManyChat ? '(PRIMARY)' : '(not configured)'}          │
+  │   ${hasMetaKeys ? '✅' : '⬚ '} Meta API ${hasMetaKeys ? '(FALLBACK)' : '(not configured)'}          │
   └─────────────────────────────────────────┘
   `);
 });
